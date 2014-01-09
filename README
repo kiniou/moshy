@@ -1,0 +1,6 @@
+= Moshy : a simple Mosh wrapper with profile settings
+
+== Introduction
+
+Moshy is a simple python script which allow a user to connect to mosh
+server with different settings (like port ranges)
