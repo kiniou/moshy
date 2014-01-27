@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+#
+#    moshy - Mosh powered with profiles
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#    Copyright (C) 2014 Kevin Roy <kiniou@gmail.com>
+
+import os
+import sys
+from pprint import pprint, pformat
+
+from random import randrange
+
+from docopt import docopt
+
+#Description:
+#
+#    Comprehensive mosh wrapper powered with profiles.
+#
+#    You can select a profile by passing '<hostname>' argument and extra arguments
+#    which will be executed to the remote mosh session.
+#
+#    <hostname> parameter match configuration sections and can be formatted like
+#    the following:
+#        hostname             - connect to a remote hostname
+#        user@hostname        - connect a specific user to connect with
+#        hostname:flavor
+#        user@hostname:flavor - 'flavor' is an arbitrary name that can be
+#                               used to reference your commands.
+#
+#    You can simply list configured profiles by using the 'list' command and get
+#    more information on profile configured.
+
+__doc__ = """\
+moshy
+
+Usage:
+    moshy [-v] list
+    moshy [options] <hostname> [--] [<cmd>...]
+
+
+Options:
+    -h, --help      This help
+    -v, --verbose   Increase verbosity
+                    (NOTE: This only apply to the 'list' option.)
+    -d, --debug     Debug moshy to see what's done in background
+    -n, --dry-run   Shows what will be executed
+    list            List every remote hostname configured as profile
+
+Files:
+    /etc/moshy.conf     system configuration
+    ~/.moshy.conf       per-user configuration
+"""
+
+from configparser import ConfigParser
+
+config_paths = [
+    '/etc/moshy.conf',
+    os.path.expanduser('~/.moshy.conf')
+]
+
+from subprocess import Popen, call
+import shlex
+
+import logging
+logging.basicConfig()
+log = logging.getLogger(os.path.basename(__file__))
+log.setLevel(logging.INFO)
+config = {}
+
+def parse_hostname(hostname_argument, config):
+    host_setup = {
+        'host' : None,
+        'ports' : None,
+        'cmd' : None
+    }
+    profiles = []
+    if hostname_argument is not None:
+        log.debug("Parsing hosname argument '{host}'".format(host=hostname_argument))
+        connection = args['<hostname>'].split('@')
+        if len(connection) > 1:
+            hostname = connection[1]
+        else:
+            hostname = connection[0]
+
+        if hostname in config.sections():
+            profiles.append(hostname)
+
+        flavor = hostname.split(':')
+        if len(flavor) > 1:
+            hostname = flavor[0]
+            if hostname in config.sections():
+                profiles.append(hostname)
+
+        log.debug("Found hostname profile(s) {hostname}".format(hostname=hostname))
+        log.debug("Profile(s) to look for values :\n{profiles}".format(profiles=pformat(profiles)))
+        host_setup['host'] = hostname
+
+        profiles.reverse()
+        for profile in profiles:
+            log.debug("Get values from {profile}".format(profile=profile))
+            log.debug("profile config:\n{}".format(pformat(config.items(profile))))
+            ports = config.get(profile, 'port')
+            if ports is not None :
+                host_setup['ports'] = ports
+            log.debug("ports:{}".format(host_setup['ports']))
+
+            cmd = config.get( profile , 'cmd')
+            if cmd is not None:
+                host_setup['cmd'] = shlex.split(cmd)
+                log.debug("command:{}".format(host_setup['cmd']))
+
+    return host_setup
+
+defaults = {
+    'cmd' : None,
+    'port' : None,
+}
+
+if __name__ == "__main__":
+    args = docopt(__doc__, options_first = True)
+    #args = docopt(__doc__)
+
+    if args['--debug']:
+        log.setLevel(logging.DEBUG)
+
+    log.debug("Got following arguments:\n{args}".format(args=args))
+
+    config = ConfigParser(defaults=defaults)
+    config.read(config_paths)
+
+    host_setup = None
+    host_setup = parse_hostname(args['<hostname>'], config)
+    log.debug("Required host setup:\n{setup}".format( setup = host_setup ) )
+
+    if args['list'] :
+        print("\n".join(config.sections()))
+        sys.exit(0)
+
+    cmd = ['/usr/bin/env','mosh']
+    if host_setup['ports'] is not None :
+        ports = host_setup['ports'].split(':')
+        if len(ports) > 1:
+            port = randrange(int(ports[0]),int(ports[1]))
+        else:
+            port = ports
+        cmd.extend(['--port={p}'.format(p=port) ])
+        #cmd.extend()
+    cmd.extend([host_setup['host']])
+
+    extra_cmd = None
+    if len(args['<cmd>']) > 0:
+        if len(args['<cmd>']) == 1:
+            host_setup['cmd'] = shlex.split(args['<cmd>'])
+        else:
+            host_setup['cmd'] = args['<cmd>']
+
+
+    if host_setup['cmd'] is not None:
+        cmd.append('--')
+        cmd.extend(host_setup['cmd'])
+
+
+    log_msg = "Will execute the following command:\n {}".format(" ".join(cmd))
+    if args['--dry-run']:
+        log.info(log_msg)
+        pprint(cmd)
+    else:
+        log.debug(log_msg)
+        #p = call(cmd)
+        os.execvp(cmd[0],cmd)
+
+    #do your stuff here
+    sys.exit(0)
