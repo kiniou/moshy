@@ -157,7 +157,7 @@ if __name__ == "__main__":
         if len(ports) > 1:
             port = randrange(int(ports[0]),int(ports[1]))
         else:
-            port = ports
+            port = ports[0]
         cmd.extend(['--port={p}'.format(p=port) ])
         #cmd.extend()
     cmd.extend([host_setup['host']])
